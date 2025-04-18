@@ -31,9 +31,18 @@ async function run() {
 
     // jobs related apis
     const jobsCollection = client.db("jobPortal").collection("jobs");
+    const jobApplicationCollection = client
+      .db("jobPortal")
+      .collection("job-applications");
 
     app.get("/jobs", async (req, res) => {
-      const result = await jobsCollection.find().toArray();
+      const email = req.query.email;
+      let query = {};
+      if (email) {
+        query = { hr_email: email };
+      }
+
+      const result = await jobsCollection.find(query).toArray();
       res.send(result);
     });
 
@@ -41,6 +50,66 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await jobsCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.post("/jobs", async (req, res) => {
+      const newJob = req.body;
+      const result = await jobsCollection.insertOne(newJob);
+      res.send(result);
+    });
+
+    // job application apis
+    app.get("/job-application", async (req, res) => {
+      const email = req.query.email;
+      const query = {
+        applicants_email: email,
+      };
+      const result = await jobApplicationCollection.find(query).toArray();
+
+      for (const application of result) {
+        console.log(application.job_id);
+        const query1 = { _id: new ObjectId(application.job_id) };
+        const job = await jobsCollection.findOne(query1);
+        if (job) {
+          application.title = job.title;
+          application.location = job.location;
+          application.company = job.company;
+        }
+      }
+
+      res.send(result);
+    });
+
+    app.get(`/job-applications/jobs/:job_id`, async (req, res) => {
+      const jobId = req.params.job_id;
+      const query = { job_id: jobId };
+      const result = await jobApplicationCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.post("/job-applications", async (req, res) => {
+      const application = req.body;
+      const result = await jobApplicationCollection.insertOne(application);
+      const id = application.job_id;
+      const query = { _id: new ObjectId(id) };
+      const job = await jobsCollection.findOne(query);
+
+      let newCount = 0;
+      if (job.applicationCount) {
+        newCount = job.applicationCount + 1;
+      } else {
+        newCount = 1;
+      }
+
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          applicationCount: newCount,
+        },
+      };
+      const updateResult = await jobsCollection.updateOne(filter, updatedDoc);
+
       res.send(result);
     });
   } finally {
